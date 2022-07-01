@@ -1,0 +1,145 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta http-equiv="X-UA-Compatible" content="IE=edge">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Cluster collaborations</title>
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.0.2/dist/css/bootstrap.min.css" rel="stylesheet" integrity="sha384-EVSTQN3/azprG1Anm3QDgpJLIm9Nao0Yz1ztcQTwFspd3yD65VohhpuuCOmLASjC" crossorigin="anonymous">
+  <style>
+    .node .highlight { stroke: black; stroke-width: 3; }
+    .link .highlight { stroke: black; stroke-opacity: 1; stroke-width: 5; }
+  </style>
+</head>
+<body>
+
+
+<script src="https://cdn.jsdelivr.net/npm/d3@7.0.1"></script>
+<script src="https://cdn.jsdelivr.net/npm/uifactory@1.23.0/src/uifactory.js" import="network-chart.html"></script>
+
+<!-- Press W/S to add/remove connections -->
+<div class="container-fluid">
+  <h1 class="my-0">Movie actor clusters</h1>
+  <div class="row">
+    <div class="col">
+      <network-chart
+        width="720"
+        height="720"
+        label="true"
+        label-text:js="d => d.id"
+        label-dy="0"
+        label-font-size="16"
+        node-charge="0"
+        node-size:js="d => sizeScale(d.size)"
+        node-fill:js="d => d.fill"
+        link-stroke="black"
+        link-stroke-width="1"
+        collide="20"
+        drag-action="pin"
+      >
+        Loading network...
+      </network-chart>
+    </div>
+    <div class="col">
+      <img class="my-3" src="actors.jpg" alt="">
+    </div>
+  </div>
+</div>
+
+<script>
+  var sliderValue
+  var heading = document.querySelector('h1')
+  var chart = document.querySelector('network-chart')
+  var sizeScale = d3.scaleSqrt().domain([0, 90000]).range([0, 80])
+  var colorScale = d3.scaleLinear().domain([0.85, 0.97, 1]).range(['lime', 'yellow', 'red'])
+
+  function showLinksOver(val) {
+    sliderValue = val
+
+    // Nodes and links have 3 states:
+    //  default: Invisible. They haven't entered the stage yet.
+    //  highlight: Prominent. This is what the story is about.
+    //  visible: Medium. They've been highlighted before, are on stage, but are not the highlight.
+
+      // Clear state to default for all nodes and links
+    chart.data.nodes.forEach(d => {
+      d.visible = false
+      d.fill = '#ddf'
+      d.highlight = false
+    })
+    chart.data.links.forEach((d, i) => {
+      if (d.value >= sliderValue) {
+        d.source.fill = colorScale(d.source.insularity)
+        d.target.fill = colorScale(d.target.insularity)
+        d.source.visible = d.target.visible = true
+        d.hide = false
+      } else {
+        d.hide = true
+      }
+      if (d.value == sliderValue) {
+        d.source.highlight = d.target.highlight = d.highlight = true
+      }
+      else
+        d.highlight = false
+    })
+    if (chart.update)
+      chart.update()
+  }
+  fetch('cluster-collaboration.json')
+    .then(r => r.json())
+    .then(data => {
+
+      // Ignore self-links
+      data.links = data.links.filter(d => d.source != d.target)
+      // Sort by the highest percentage
+      data.links.sort((a, b) => b.value - a.value)
+      // Ignore reverse links. e.g. if Iranian -> Turkish is 3%, drop Turkish -> Iranian @ 2%
+      let linked = {}
+      data.links = data.links.filter(d => {
+        let key = d.source < d.target ? `${d.source},${d.target}` : `${d.target},${d.source}`
+        let match = key in linked
+        linked[key] = true
+        return !match
+      })
+
+      // Set the chart data and redraw it
+      chart.data = data
+      // Only show connections over a certain initial strength
+      showLinksOver(0.5)
+
+      document.querySelector('body').addEventListener('keypress', function (e) {
+        let action, i, link
+        if (e.code == 'KeyW') {
+          action = '>'
+          for (i=0; i<data.links.length; i++)
+            if (data.links[i].value < sliderValue) {
+              showLinksOver(data.links[i].value)
+              break
+            }
+          link = data.links[i]
+        } else if (e.code == 'KeyS') {
+          action = '<'
+          for (i=data.links.length - 1; i>=0; i--)
+            if (data.links[i].value > sliderValue) {
+              showLinksOver(data.links[i].value)
+              break
+            }
+          link = data.links[i + 1]
+        }
+        // If there's a change,
+        if (action) {
+          // Heading shows cluster connected to what cluster
+          heading.innerHTML = `${action} ${link.source.id} acts with ${link.target.id} ${(link.value * 100).toPrecision(2)}% of the time`
+          // and the two clusters are highlighted
+          chart.networkChart.node.classed('highlight', d => d.highlight)
+          chart.networkChart.label.classed('highlight', d => d.visible)
+          // and just those links are highlighted
+          chart.networkChart.link.classed('highlight', d => d.highlight)
+        }
+      }, false)
+    })
+
+</script>
+
+</body>
+</html>
