@@ -1,0 +1,8 @@
+# Don't commit data
+*.csv
+*.csv.gz
+*.tsv
+*.tsv.gz
+
+# Don't commit generated files
+*.log
